@@ -1,0 +1,8 @@
+[package]
+name = "xdp-recon"
+version = "0.1.0"
+edition = "2021"
+description = "XDP packet drop reconciliation test harness"
+license = "MIT"
+
+[dependencies]
