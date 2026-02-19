@@ -1,10 +1,23 @@
 // SPDX-License-Identifier: GPL-2.0
 //
-// xdp-recon: per CPU stats map and XDP_PASS skeleton. The full parser
-// and ringbuf event submission come in later revisions.
+// xdp-recon: ingress XDP program. Counts every received packet, parses
+// Ethernet, IPv4, TCP, and always returns XDP_PASS so the host stack
+// still drives the link. Counter semantics match the test contract:
+//
+//   rx_total            every packet
+//   rx_parsed_ipv4      IPv4 but not TCP
+//   rx_parsed_tcp       IPv4 and TCP
+//   parse_errors        truncated, non IPv4, or IPv4 with options
+//   xdp_pass_count      every packet
+//   xdp_drop_count      never; kept for schema symmetry
 
 #include <linux/bpf.h>
+#include <linux/if_ether.h>
+#include <linux/ip.h>
+#include <linux/tcp.h>
+#include <linux/in.h>
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
 #define STAT_RX_TOTAL          0
 #define STAT_RX_PARSED_IPV4    1
@@ -30,11 +43,44 @@ static __always_inline void stat_inc(__u32 idx)
         (*v)++;
 }
 
+static __always_inline int parse_outcome(void *data, void *data_end)
+{
+    struct ethhdr *eth = data;
+    if ((void *)(eth + 1) > data_end)
+        return STAT_PARSE_ERRORS;
+
+    if (eth->h_proto != bpf_htons(ETH_P_IP))
+        return STAT_PARSE_ERRORS;
+
+    struct iphdr *ip = (void *)(eth + 1);
+    if ((void *)(ip + 1) > data_end)
+        return STAT_PARSE_ERRORS;
+
+    // pktgen does not emit IP options. Restricting ihl to 5 gives the
+    // verifier a constant offset to the TCP header.
+    if (ip->ihl != 5)
+        return STAT_PARSE_ERRORS;
+
+    if (ip->protocol != IPPROTO_TCP)
+        return STAT_RX_PARSED_IPV4;
+
+    struct tcphdr *tcp = (struct tcphdr *)(ip + 1);
+    if ((void *)(tcp + 1) > data_end)
+        return STAT_PARSE_ERRORS;
+
+    return STAT_RX_PARSED_TCP;
+}
+
 SEC("xdp")
 int xdp_recon(struct xdp_md *ctx)
 {
+    void *data_end = (void *)(long)ctx->data_end;
+    void *data = (void *)(long)ctx->data;
+
     stat_inc(STAT_RX_TOTAL);
+    stat_inc(parse_outcome(data, data_end));
     stat_inc(STAT_XDP_PASS_COUNT);
+
     return XDP_PASS;
 }
 
