@@ -1,10 +1,11 @@
 use anyhow::{anyhow, bail, Context, Result};
 use libbpf_rs::skel::{OpenSkel, SkelBuilder};
-use libbpf_rs::{Map, MapFlags};
+use libbpf_rs::{Map, MapFlags, RingBufferBuilder};
 use std::fs;
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 mod skel {
     #![allow(clippy::all)]
@@ -40,13 +41,19 @@ fn read_counter(map: &Map, idx: u32) -> Result<u64> {
     Ok(sum)
 }
 
-fn dump_counters(map: &Map, out: Option<&str>) -> Result<()> {
+fn dump_counters(
+    map: &Map,
+    events_received: u64,
+    ringbuf_lost_events: u64,
+    out: Option<&str>,
+) -> Result<()> {
     let mut json = String::from("{\n");
-    for (i, (name, idx)) in COUNTERS.iter().enumerate() {
+    for (name, idx) in COUNTERS {
         let v = read_counter(map, *idx)?;
-        let sep = if i + 1 == COUNTERS.len() { "" } else { "," };
-        json.push_str(&format!("  \"{name}\": {v}{sep}\n"));
+        json.push_str(&format!("  \"{name}\": {v},\n"));
     }
+    json.push_str(&format!("  \"events_received\": {events_received},\n"));
+    json.push_str(&format!("  \"ringbuf_lost_events\": {ringbuf_lost_events}\n"));
     json.push_str("}\n");
     match out {
         Some(p) => fs::write(p, json).with_context(|| format!("write {p}"))?,
@@ -76,6 +83,22 @@ fn main() -> Result<()> {
 
     eprintln!("attached xdp_recon to {ifname} (ifindex={ifindex}); waiting for SIGINT");
 
+    let received = Arc::new(AtomicU64::new(0));
+    let received_cb = received.clone();
+
+    let maps = skel.maps();
+    let events_map = maps.events();
+    let stats_map = maps.xdp_stats();
+
+    let mut rb_builder = RingBufferBuilder::new();
+    rb_builder
+        .add(&events_map, move |_data: &[u8]| {
+            received_cb.fetch_add(1, Ordering::Relaxed);
+            0
+        })
+        .context("ringbuf add events")?;
+    let rb = rb_builder.build().context("ringbuf build")?;
+
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
     ctrlc::set_handler(move || {
@@ -84,12 +107,23 @@ fn main() -> Result<()> {
     .context("install signal handler")?;
 
     while running.load(Ordering::SeqCst) {
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        let _ = rb.poll(Duration::from_millis(200));
     }
 
+    eprintln!("draining ringbuf");
+    let _ = rb.consume();
+
+    // BPF_MAP_TYPE_RINGBUF has no kernel side lost sample callback (unlike
+    // perfbuf). The gap between BPF submitted and userspace received is
+    // the best userspace signal we have, so derive ringbuf_lost_events
+    // from that delta. BPF side reserve failures are tracked separately
+    // in events_failed.
+    let events_received = received.load(Ordering::Relaxed);
+    let events_submitted = read_counter(&stats_map, 6)?;
+    let ringbuf_lost_events = events_submitted.saturating_sub(events_received);
+
     eprintln!("draining counters");
-    let maps = skel.maps();
-    dump_counters(&maps.xdp_stats(), out_path.as_deref())?;
+    dump_counters(&stats_map, events_received, ringbuf_lost_events, out_path.as_deref())?;
     eprintln!("detaching");
     Ok(())
 }
