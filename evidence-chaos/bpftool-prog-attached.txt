@@ -1,0 +1,44 @@
+30: cgroup_sysctl  name sysctl_monitor  tag 78dcac0637f56d1c  gpl run_time_ns 719297 run_cnt 240
+	loaded_at 2026-05-11T04:08:07-0500  uid 998
+	xlated 1232B  jited 912B  memlock 4096B  map_ids 9,12,10
+	btf_id 74
+69: cgroup_device  name sd_devices  tag fba67f14acbaee05  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 184B  jited 176B  memlock 4096B
+70: cgroup_device  name sd_devices  tag ee0e253c78993a24  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 416B  jited 384B  memlock 4096B
+71: cgroup_device  name sd_devices  tag 654d7024997e7811  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 464B  jited 416B  memlock 4096B
+72: cgroup_device  name sd_devices  tag 134b8a301991f6b7  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 504B  jited 448B  memlock 4096B
+73: cgroup_skb  name sd_fw_egress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+74: cgroup_skb  name sd_fw_ingress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+75: cgroup_device  name sd_devices  tag 3e5aef439b494f04  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 840B  jited 696B  memlock 4096B
+76: cgroup_skb  name sd_fw_egress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+77: cgroup_skb  name sd_fw_ingress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+78: cgroup_device  name sd_devices  tag 134b8a301991f6b7  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 504B  jited 448B  memlock 4096B
+79: cgroup_skb  name sd_fw_egress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+80: cgroup_skb  name sd_fw_ingress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T04:09:19-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+122: xdp  name xdp_recon  tag a4f219ec762356ea  gpl
+	loaded_at 2026-05-11T04:21:56-0500  uid 0
+	xlated 1256B  jited 856B  memlock 4096B  map_ids 26,27
+	btf_id 179

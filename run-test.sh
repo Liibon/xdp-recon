@@ -19,6 +19,7 @@ RATE_PPS=${RATE_PPS:-0}
 MIN_DURATION=${MIN_DURATION:-60}
 EVIDENCE=${EVIDENCE:-evidence}
 LOADER_BIN=${LOADER_BIN:-target/release/xdp-recon}
+CHAOS_LOSS_PCT=${CHAOS_LOSS_PCT:-0}
 
 PKTGEN_THREAD=/proc/net/pktgen/kpktgend_0
 PKTGEN_DEV=/proc/net/pktgen/$VETH0
@@ -31,18 +32,15 @@ need_root() { [[ $EUID -eq 0 ]] || die "must run as root"; }
 ensure_tool() { command -v "$1" >/dev/null 2>&1 || die "missing tool: $1"; }
 
 need_root
-for t in ip ethtool sysctl bpftool clang cargo modprobe python3; do
+for t in ip ethtool sysctl bpftool modprobe python3; do
     ensure_tool "$t"
 done
+
+[[ -x "$LOADER_BIN" ]] || die "loader not built; run 'cargo build --release' first"
 
 log "clearing $EVIDENCE/"
 rm -rf "$EVIDENCE"
 mkdir -p "$EVIDENCE"
-
-build_loader() {
-    log "building loader"
-    cargo build --release 2> "$EVIDENCE/build.log"
-}
 
 setup_veth() {
     log "tearing down stale veth (best effort)"
@@ -50,25 +48,38 @@ setup_veth() {
 
     log "creating $VETH0 and $VETH1"
     ip link add "$VETH0" type veth peer name "$VETH1"
+    # Kill IPv6, ARP, and multicast on both legs before bringing them up.
+    # Background ND, RA, and multicast packets otherwise contaminate the
+    # link counters and trip xdp_parse_errors.
+    for nic in "$VETH0" "$VETH1"; do
+        echo 1 > /proc/sys/net/ipv6/conf/"$nic"/disable_ipv6 2>/dev/null || true
+        ip link set "$nic" arp off
+        ip link set "$nic" multicast off
+    done
     ip link set "$VETH0" up
     ip link set "$VETH1" up
     # pktgen sends raw frames. Generic offloads only confuse the counters.
     for nic in "$VETH0" "$VETH1"; do
         ethtool -K "$nic" tx off rx off gso off gro off tso off lro off 2>/dev/null || true
     done
+
+    if [[ $CHAOS_LOSS_PCT -gt 0 ]]; then
+        log "chaos mode: injecting ${CHAOS_LOSS_PCT}% netem loss on $VETH0"
+        tc qdisc add dev "$VETH0" root netem loss "${CHAOS_LOSS_PCT}%"
+    fi
 }
 
 capture_env() {
     {
-        echo "=== uname -a ==="; uname -a
-        echo "=== /etc/os-release ==="; cat /etc/os-release
-        echo "=== rustc --version ==="; rustc --version
-        echo "=== clang --version ==="; clang --version
-        echo "=== bpftool version ==="; bpftool version
-        echo "=== ip -d link show $VETH0 ==="; ip -d link show "$VETH0"
-        echo "=== ip -d link show $VETH1 ==="; ip -d link show "$VETH1"
-        echo "=== ethtool -i $VETH1 ==="; ethtool -i "$VETH1" || true
-        echo "=== sysctl kernel.bpf_stats_enabled ==="; sysctl kernel.bpf_stats_enabled
+        echo "=== uname -a ==="; uname -a || true
+        echo "=== /etc/os-release ==="; cat /etc/os-release || true
+        echo "=== rustc --version ==="; rustc --version 2>&1 || echo "(rustc not in sudo PATH)"
+        echo "=== clang --version ==="; clang --version 2>&1 || echo "(clang not in sudo PATH)"
+        echo "=== bpftool version ==="; bpftool version || true
+        echo "=== ip -d link show $VETH0 ==="; ip -d link show "$VETH0" || true
+        echo "=== ip -d link show $VETH1 ==="; ip -d link show "$VETH1" || true
+        echo "=== ethtool -i $VETH1 ==="; ethtool -i "$VETH1" 2>&1 || true
+        echo "=== sysctl kernel.bpf_stats_enabled ==="; sysctl kernel.bpf_stats_enabled || true
     } > "$EVIDENCE/env.txt"
 }
 
@@ -82,31 +93,43 @@ pktgen_init() {
     [[ -e $PKTGEN_THREAD ]] || die "pktgen did not expose /proc/net/pktgen"
 }
 
+pg_set() {
+    # Mirrors the helper from samples/pktgen in the kernel tree. Writes
+    # one command to the device's pktgen proc file and surfaces the
+    # kernel's rejection if any.
+    local cmd="$1"
+    if ! echo "$cmd" > "$PKTGEN_DEV" 2>/dev/null; then
+        die "pktgen rejected: $cmd"
+    fi
+}
+
 pktgen_configure() {
     local dst_mac="$1"
     log "configuring pktgen on $VETH0 dst=$dst_mac count=$PKT_COUNT size=$PKT_SIZE rate=$RATE_PPS"
     echo "rem_device_all" > "$PKTGEN_THREAD"
     echo "add_device $VETH0" > "$PKTGEN_THREAD"
 
-    {
-        echo "reset"
-        echo "count $PKT_COUNT"
-        echo "pkt_size $PKT_SIZE"
-        echo "clone_skb 0"
-        echo "delay 0"
-        echo "dst_mac $dst_mac"
-        echo "src_min 10.10.0.1"
-        echo "src_max 10.10.0.1"
-        echo "dst_min 10.10.0.2"
-        echo "dst_max 10.10.0.2"
-        echo "udp_src_min 4000"
-        echo "udp_src_max 4000"
-        echo "udp_dst_min 5000"
-        echo "udp_dst_max 5000"
-        if [[ $RATE_PPS -gt 0 ]]; then
-            echo "ratep $RATE_PPS"
-        fi
-    } > "$PKTGEN_DEV"
+    pg_set "count $PKT_COUNT"
+    pg_set "pkt_size $PKT_SIZE"
+    pg_set "clone_skb 0"
+    pg_set "delay 0"
+    pg_set "dst_mac $dst_mac"
+    pg_set "dst 10.10.0.2"
+    pg_set "src_min 10.10.0.1"
+    pg_set "src_max 10.10.0.1"
+    pg_set "udp_dst_min 5000"
+    pg_set "udp_dst_max 5000"
+    pg_set "udp_src_min 4000"
+    pg_set "udp_src_max 4000"
+    if [[ $RATE_PPS -gt 0 ]]; then
+        pg_set "ratep $RATE_PPS"
+    fi
+    # pktgen's default xmit path is start_xmit, which bypasses qdisc and
+    # therefore bypasses netem. For chaos runs we switch to queue_xmit so
+    # the injected loss is visible to pktgen's egress.
+    if [[ $CHAOS_LOSS_PCT -gt 0 ]]; then
+        pg_set "xmit_mode queue_xmit"
+    fi
 }
 
 pktgen_start() {
@@ -134,12 +157,13 @@ cleanup() {
     set +e
     [[ -n "${LOADER_PID:-}" ]] && kill -INT "$LOADER_PID" 2>/dev/null
     [[ -n "${LOADER_PID:-}" ]] && wait "$LOADER_PID" 2>/dev/null
-    echo "rem_device_all" > "$PKTGEN_THREAD" 2>/dev/null
+    if [[ -e "$PKTGEN_THREAD" ]]; then
+        echo "rem_device_all" > "$PKTGEN_THREAD" 2>/dev/null
+    fi
     ip link del "$VETH0" 2>/dev/null
 }
 trap cleanup EXIT
 
-build_loader
 setup_veth
 sysctl -w kernel.bpf_stats_enabled=1 >/dev/null
 capture_env
@@ -181,14 +205,30 @@ fi
 
 date +%s%N > "$EVIDENCE/test-end.txt"
 
+# Capture after-state BEFORE detaching the loader. Once the program
+# exits, the map disappears from bpftool's view.
+bpftool prog show id "$PROG_ID" -j > "$EVIDENCE/prog-runtime.json" 2>/dev/null || true
+capture_after
+
 log "stopping loader so map counters settle"
 kill -INT "$LOADER_PID"
 wait "$LOADER_PID" 2>/dev/null || true
 LOADER_PID=
 
-bpftool prog show id "$PROG_ID" -j > "$EVIDENCE/prog-runtime.json" 2>/dev/null || true
-capture_after
-
 log "reconciliation"
-python3 "$(dirname "$0")/scripts/reconcile.py" "$EVIDENCE" > "$EVIDENCE/results.md"
+if python3 "$(dirname "$0")/scripts/reconcile.py" "$EVIDENCE" > "$EVIDENCE/results.md"; then
+    RECONCILE_PASSED=1
+else
+    RECONCILE_PASSED=0
+fi
 cat "$EVIDENCE/results.md"
+
+if [[ $CHAOS_LOSS_PCT -gt 0 ]]; then
+    if [[ $RECONCILE_PASSED -eq 1 ]]; then
+        die "chaos mode injected loss but reconciler reported PASS; harness bug"
+    fi
+    log "chaos mode: reconciler correctly reported FAIL"
+    exit 0
+else
+    exit $((RECONCILE_PASSED == 1 ? 0 : 1))
+fi

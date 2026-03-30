@@ -39,10 +39,15 @@ def parse_iplink_stats(text):
 
 
 def parse_pktgen(text):
-    """Pull the authoritative TX count from /proc/net/pktgen/<dev>."""
-    m = re.search(r"pkts-so-far:\s+(\d+)", text)
+    """Pull the authoritative TX count from /proc/net/pktgen/<dev>.
+
+    Newer pktgen reports `pkts-sofar` in the Current section. The Result
+    summary line also encodes the count as the second numeric field.
+    Either is authoritative; we prefer pkts-sofar when present.
+    """
+    m = re.search(r"pkts-sofar:\s+(\d+)", text)
     if not m:
-        m = re.search(r"\bpkts:\s+(\d+)", text)
+        m = re.search(r"Result:\s+OK:.*?,\s+(\d+)\s+\(", text)
     if not m:
         raise RuntimeError("could not find pktgen TX count in generator-output.txt")
     return int(m.group(1))
