@@ -1,0 +1,6 @@
+attached xdp_recon to veth1 (ifindex=29)
+filter: drop_ports populated with 1 entries (5000)
+waiting for SIGINT
+draining ringbuf
+draining counters
+detaching

@@ -62,10 +62,29 @@ fn dump_counters(
     Ok(())
 }
 
+fn populate_drop_ports(map: &Map, ports_csv: &str) -> Result<usize> {
+    let mut populated = 0;
+    for piece in ports_csv.split(',') {
+        let trimmed = piece.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let port: u16 = trimmed
+            .parse()
+            .with_context(|| format!("parse port: {trimmed}"))?;
+        let key: u32 = port as u32;
+        map.update(&key.to_ne_bytes(), &[1u8], MapFlags::ANY)
+            .with_context(|| format!("update drop_ports[{port}]"))?;
+        populated += 1;
+    }
+    Ok(populated)
+}
+
 fn main() -> Result<()> {
     let ifname = std::env::var("XDP_RECON_IFACE")
         .context("set XDP_RECON_IFACE to an interface name, e.g. veth1")?;
     let out_path = std::env::var("XDP_RECON_OUT").ok();
+    let drop_ports_csv = std::env::var("XDP_RECON_DROP_PORTS").unwrap_or_default();
 
     let ifindex = nix::net::if_::if_nametoindex(ifname.as_str())
         .with_context(|| format!("if_nametoindex({ifname})"))?
@@ -81,14 +100,20 @@ fn main() -> Result<()> {
         .attach_xdp(ifindex)
         .with_context(|| format!("attach xdp to ifindex {ifindex}"))?;
 
-    eprintln!("attached xdp_recon to {ifname} (ifindex={ifindex}); waiting for SIGINT");
-
-    let received = Arc::new(AtomicU64::new(0));
-    let received_cb = received.clone();
+    eprintln!("attached xdp_recon to {ifname} (ifindex={ifindex})");
 
     let maps = skel.maps();
     let events_map = maps.events();
     let stats_map = maps.xdp_stats();
+    let drop_ports_map = maps.drop_ports();
+
+    if !drop_ports_csv.is_empty() {
+        let n = populate_drop_ports(&drop_ports_map, &drop_ports_csv)?;
+        eprintln!("filter: drop_ports populated with {n} entries ({drop_ports_csv})");
+    }
+
+    let received = Arc::new(AtomicU64::new(0));
+    let received_cb = received.clone();
 
     let mut rb_builder = RingBufferBuilder::new();
     rb_builder
@@ -106,6 +131,7 @@ fn main() -> Result<()> {
     })
     .context("install signal handler")?;
 
+    eprintln!("waiting for SIGINT");
     while running.load(Ordering::SeqCst) {
         let _ = rb.poll(Duration::from_millis(200));
     }

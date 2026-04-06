@@ -1,0 +1,21 @@
+Params: count 1000000  min_pkt_size: 64  max_pkt_size: 64
+     frags: 0  delay: 0  clone_skb: 0  ifname: veth0
+     flows: 0 flowlen: 0
+     queue_map_min: 0  queue_map_max: 0
+     dst_min: 10.10.0.2  dst_max: 
+     src_min: 10.10.0.1  src_max: 10.10.0.1
+     src_mac: ee:08:52:50:2a:5f dst_mac: f6:90:69:52:54:37
+     udp_src_min: 4000  udp_src_max: 4000  udp_dst_min: 5000  udp_dst_max: 5000
+     src_mac_count: 0  dst_mac_count: 0
+     xmit_mode: xmit_queue
+     Flags: SHARED  
+Current:
+     pkts-sofar: 1000000  errors: 0
+     started: 14254156087us  stopped: 14254825562us idle: 8593us
+     seq_num: 1000001  cur_dst_mac_offset: 0  cur_src_mac_offset: 0
+     cur_saddr: 10.10.0.1  cur_daddr: 10.10.0.2
+     cur_udp_dst: 5000  cur_udp_src: 4000
+     cur_queue_map: 0
+     flows: 0
+Result: OK: 669474(c660880+d8593) usec, 1000000 (64byte,0frags)
+  1493708pps 764Mb/sec (764778496bps) errors: 0

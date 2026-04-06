@@ -1,0 +1,47 @@
+347: cgroup_sysctl  name sysctl_monitor  tag 78dcac0637f56d1c  gpl run_time_ns 2763502 run_cnt 1415
+	loaded_at 2026-05-11T08:51:03-0500  uid 998
+	xlated 1232B  jited 912B  memlock 4096B  map_ids 75,78,76
+	btf_id 272
+349: cgroup_device  name sd_devices  tag 134b8a301991f6b7  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 504B  jited 448B  memlock 4096B
+350: cgroup_device  name sd_devices  tag 134b8a301991f6b7  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 504B  jited 448B  memlock 4096B
+351: cgroup_skb  name sd_fw_egress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+352: cgroup_skb  name sd_fw_ingress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+353: cgroup_device  name sd_devices  tag 3e5aef439b494f04  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 840B  jited 696B  memlock 4096B
+354: cgroup_skb  name sd_fw_egress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+355: cgroup_skb  name sd_fw_ingress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+356: cgroup_device  name sd_devices  tag fba67f14acbaee05  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 184B  jited 176B  memlock 4096B
+357: cgroup_device  name sd_devices  tag ee0e253c78993a24  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 416B  jited 384B  memlock 4096B
+358: cgroup_skb  name sd_fw_egress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+359: cgroup_skb  name sd_fw_ingress  tag 6deef7357e7b4530  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 64B  jited 104B  memlock 4096B
+360: cgroup_device  name sd_devices  tag 654d7024997e7811  gpl
+	loaded_at 2026-05-11T08:56:04-0500  uid 0
+	xlated 464B  jited 416B  memlock 4096B
+361: cgroup_device  name sd_devices  tag 155fe28c020cd821  gpl run_time_ns 2292 run_cnt 6
+	loaded_at 2026-05-11T08:59:08-0500  uid 0
+	xlated 1616B  jited 1280B  memlock 4096B
+367: xdp  name xdp_recon  tag 0cf5314bc6e48f2f  gpl
+	loaded_at 2026-05-11T10:18:31-0500  uid 0
+	xlated 1576B  jited 1048B  memlock 4096B  map_ids 81,80,82
+	btf_id 284

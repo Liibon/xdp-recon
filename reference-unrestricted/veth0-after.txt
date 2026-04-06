@@ -1,0 +1,6 @@
+26: veth0@veth1: <BROADCAST,NOARP,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default qlen 1000
+    link/ether ee:08:52:50:2a:5f brd ff:ff:ff:ff:ff:ff
+    RX:  bytes  packets errors dropped  missed   mcast           
+             0        0      0       0       0       0 
+    TX:  bytes  packets errors dropped carrier collsns           
+     500000000 10000000      0       0       0       0 

@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: GPL-2.0
 //
 // xdp-recon: ingress XDP program. Counts every received packet, parses
-// Ethernet, IPv4, TCP, optionally submits a metadata event to userspace
-// via ringbuf, and always returns XDP_PASS so the host stack still
-// drives the link. Counter semantics match the test contract:
+// Ethernet, IPv4, TCP, applies a per-destination-port drop filter via
+// a userspace-populated array map, optionally submits a metadata event
+// to userspace via ringbuf, and returns XDP_PASS or XDP_DROP. Counter
+// semantics:
 //
 //   rx_total            every packet
 //   rx_parsed_ipv4      IPv4 but not TCP
 //   rx_parsed_tcp       IPv4 and TCP
 //   parse_errors        truncated, non IPv4, or IPv4 with options
-//   xdp_pass_count      every packet
-//   xdp_drop_count      never; kept for schema symmetry
+//   xdp_pass_count      packet was returned XDP_PASS
+//   xdp_drop_count      packet was returned XDP_DROP by the filter
 //   events_submitted    ringbuf reserve and submit both succeeded
 //   events_failed       ringbuf reserve returned NULL
+//
+// Filter contract: the BPF_MAP_TYPE_ARRAY drop_ports is indexed by L4
+// destination port (key __u32). A non-zero byte at that index causes
+// XDP_DROP for TCP packets only. Map is array-backed and preallocated;
+// kernel allocates 8-byte-aligned slots, so the actual map footprint
+// is on the order of 512 KiB.
 
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
@@ -53,6 +60,13 @@ struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 1 << 20); // 1 MiB
 } events SEC(".maps");
+
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 65536);
+    __type(key, __u32);
+    __type(value, __u8);
+} drop_ports SEC(".maps");
 
 static __always_inline void stat_inc(__u32 idx)
 {
@@ -128,8 +142,15 @@ int xdp_recon(struct xdp_md *ctx)
     int outcome = parse_outcome(data, data_end, &ip, &tcp);
     stat_inc(outcome);
 
-    if (outcome == STAT_RX_PARSED_TCP)
+    if (outcome == STAT_RX_PARSED_TCP) {
+        __u32 dport = bpf_ntohs(tcp->dest);
+        __u8 *should_drop = bpf_map_lookup_elem(&drop_ports, &dport);
+        if (should_drop && *should_drop) {
+            stat_inc(STAT_XDP_DROP_COUNT);
+            return XDP_DROP;
+        }
         submit_event(ctx, ip, tcp);
+    }
 
     stat_inc(STAT_XDP_PASS_COUNT);
     return XDP_PASS;

@@ -1,0 +1,5 @@
+attached xdp_recon to veth1 (ifindex=27)
+waiting for SIGINT
+draining ringbuf
+draining counters
+detaching
