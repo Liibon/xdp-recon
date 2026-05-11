@@ -1,0 +1,36 @@
+{
+  "widgets": [
+    {
+      "type": "text",
+      "x": 0, "y": 0, "width": 24, "height": 2,
+      "properties": {
+        "markdown": "# xdp-recon EC2 ENI corroboration\n\nTwo windows on the same target ENI. **PASS**: XDP attached, no filter; kernel emits TCP RSTs to every SYN, so NetworkOut tracks NetworkIn. **DROP**: same XDP program, `drop_ports[5000]=1`; XDP_DROP eats SYNs in generic mode, no RSTs are sent, NetworkOut collapses while NetworkIn stays lit."
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 2, "width": 24, "height": 9,
+      "properties": {
+        "metrics": [
+          ["AWS/EC2", "NetworkIn",  "InstanceId", "<YOUR_TARGET_INSTANCE_ID>", { "label": "NetworkIn (bytes)",  "color": "#1f77b4" }],
+          [".",       "NetworkOut", ".",          ".",                          { "label": "NetworkOut (bytes)", "color": "#d62728" }]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "stat": "Sum",
+        "period": 60,
+        "title": "ingress observed, XDP drop suppresses kernel egress",
+        "yAxis": { "left": { "label": "bytes / min", "showUnits": false } },
+        "annotations": {
+          "vertical": [
+            { "label": "PASS start", "value": "<PASS_START_ISO8601>" },
+            { "label": "PASS end",   "value": "<PASS_END_ISO8601>" },
+            { "label": "DROP start", "value": "<DROP_START_ISO8601>" },
+            { "label": "DROP end",   "value": "<DROP_END_ISO8601>" }
+          ]
+        }
+      }
+    }
+  ]
+}

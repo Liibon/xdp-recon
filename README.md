@@ -1,15 +1,23 @@
-# xdp-recon
+# XDP Packet Drop Reconciliation
 
-![xdp-recon architecture: use cases, userspace harness, kernel pktgen and XDP](docs/architecture.jpg)
+![architecture: use cases, userspace harness, kernel pktgen and XDP](docs/architecture.jpg)
 
-XDP packet drop reconciliation test harness. Built around a veth pair.
+XDP packet drop reconciliation test harness. Built around a veth pair on
+Linux. Reconciles up to four independent counter sources to defend the
+phrase "no observed packet drops" under stated conditions.
 
-Three counter sources are reconciled at the end of each run:
+Counter sources, in order of how much you control them:
 
-- pktgen authoritative TX count from `/proc/net/pktgen/veth0` (or veth0 TX
-  delta from `ip -s link` when the generator is mausezahn)
-- kernel link stats from `ip -s link show` on both legs
-- per CPU BPF map populated by the XDP program on veth1 ingress
+| Source | Where | Under harness control |
+|---|---|---|
+| pktgen TX count (or mausezahn / hping3 self-report) | inside the VM | yes |
+| `ip -s link` counters on both legs | inside the VM, kernel | yes |
+| per-CPU BPF `xdp_stats` map | inside the VM, kernel | yes |
+| **CloudWatch `NetworkIn` / `NetworkOut`** | **outside the VM, AWS hypervisor** | **no** |
+
+The fourth source only applies when running on EC2; it's the strongest
+because the AWS hypervisor publishes those metrics independent of
+anything the harness does. See the AWS section below.
 
 The XDP program also enforces a destination-port drop filter, populated
 from userspace via env var. The reconciler verifies that the number of
@@ -144,6 +152,43 @@ Two sections. First is a fixed width counter table. Second is each pass
 condition with PASS or FAIL, then the overall verdict, then
 `mean_runtime_ns`, then `ringbuf_lost_events`. No prose. Screenshot
 target.
+
+## AWS EC2 ENI corroboration
+
+The veth tests above run inside one Linux box. The AWS demo adds the
+fourth counter source by running the same XDP program on a real EC2
+instance's ENI, with a separate EC2 instance generating TCP SYN traffic
+across the VPC. CloudWatch then observes `NetworkIn` and `NetworkOut`
+from outside the target VM.
+
+![CloudWatch NetworkIn vs NetworkOut showing the PASS and DROP windows](docs/aws-cloudwatch-corroboration.png)
+
+Two windows, same target, same generator:
+
+- **PASS** (XDP attached, no filter): kernel emits a TCP RST for every
+  SYN to closed port 5000. `NetworkOut` tracks `NetworkIn` cleanly.
+- **DROP** (`drop_ports[5000] = 1`): XDP_DROP runs before TCP, no RST is
+  sent. `NetworkIn` stays lit, `NetworkOut` collapses by roughly 6900x.
+
+The shape is the proof. AWS doesn't know what XDP is, doesn't run the
+harness, doesn't see the BPF map. It just publishes byte counters per
+ENI, and the byte counters describe what the filter did.
+
+Run details on the captured screenshot:
+
+| Window | Generator | Target XDP mode | NetworkIn peak | NetworkOut peak |
+|---|---|---|---|---|
+| PASS | `nping --tcp -p 5000 --rate 20000 --count 3.6M` | xdpgeneric, no filter | 113 MB/min | 113 MB/min |
+| DROP | same generator command | xdpgeneric, drop_ports[5000]=1 | 132 MB/min | 19 KB/min |
+
+Native XDP on ENA refused the link-based attach on this kernel; the
+program ran in generic (SKB) mode instead. The kernel measured 62.6 ns
+per packet via BPF runtime stats in that path, compared with 24.4 ns
+for native XDP on veth in `reference-filter-active/`. Different paths,
+different numbers, both kernel-emitted.
+
+Reproducing the AWS demo is documented in `aws/`: the cloud-init
+user-data scripts, the dashboard JSON, and the two test commands.
 
 ## Lima quickstart
 
